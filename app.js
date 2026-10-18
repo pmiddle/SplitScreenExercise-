@@ -1,6 +1,6 @@
 (() => {
-const YouTubeURL = window.URL;
 'use strict';
+const YouTubeURL = window.URL;
 const $ = id => document.getElementById(id);
 const categories = ['workout', 'entertainment'];
 const STORAGE = 'move-mix-v1';
@@ -34,7 +34,74 @@ let workoutPlayer, entertainmentPlayer;
 const ready = {workout:false, entertainment:false};
 const pending = {workout:null, entertainment:null};
 const muted = {workout:false, entertainment:false};
+// A platform hint only: a viewport size cannot reproduce Safari's media policy.
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const debug = new YouTubeURL(location.href).searchParams.get('debug') === '1';
+const commandHistory = {workout:[], entertainment:[]};
+let commandSequence = 0, mobileAudioMode = false, expanded = false, restoreFocus, savedScroll = 0;
+let audioBeforeMode = null;
 let playing = false, initialized = false, apiPromise, filter = 'all', dialogMode = 'save', replaceCategory = 'entertainment';
+function diagnostic(type, detail) {
+  if (debug) console.info('[MOVE/MIX]', type, {at: new Date().toISOString(), ...detail});
+}
+function updateMuteButton(c) {
+  const button = document.querySelector(`[data-mute="${c}"]`);
+  button.textContent = muted[c] ? '×' : '♫';
+  button.setAttribute('aria-pressed', String(muted[c]));
+  button.setAttribute('aria-label', `${muted[c] ? 'Unmute' : 'Mute'} ${c}`);
+}
+function setMobileAudioMode(enabled) {
+  if (enabled === mobileAudioMode) return;
+  if (enabled) {
+    audioBeforeMode = {...muted};
+    muted.workout = true; muted.entertainment = false;
+  } else if (audioBeforeMode) {
+    Object.assign(muted, audioBeforeMode); audioBeforeMode = null;
+  }
+  mobileAudioMode = enabled;
+  $('mobileAudioMode').setAttribute('aria-pressed', String(enabled));
+  $('mobileAudioMode').textContent = enabled ? 'Muted workout mode: on' : 'Try muted workout mode';
+  categories.forEach(c => { updateMuteButton(c); applySound(c); });
+  status(enabled ? 'Workout muted; entertainment audio enabled. Press Play both to test this combination on your device.' : 'Previous mute settings restored. Press Play both when ready.');
+  diagnostic('audio-mode', {enabled});
+}
+function setExpanded(enabled) {
+  if (enabled === expanded) return;
+  expanded = enabled;
+  if (enabled) {
+    restoreFocus = document.activeElement; savedScroll = window.scrollY;
+    $('mobilePlaybackHelp').hidden = false;
+  }
+  document.body.classList.toggle('expanded', enabled);
+  $('expandView').textContent = enabled ? 'Exit Expanded View' : 'Expand View';
+  $('expandView').setAttribute('aria-pressed', String(enabled));
+  // Only CSS changes: never move or replace iframe nodes or call fullscreen APIs.
+  if (enabled) $('expandView').focus({preventScroll:true});
+  else { window.scrollTo(0, savedScroll); restoreFocus?.focus({preventScroll:true}); }
+  diagnostic('expanded-view', {enabled});
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && expanded && !$('editor').open) setExpanded(false);
+});
+function handlePlayerState(c, value) {
+  const names = {'-1':'unstarted',0:'ended',1:'playing',2:'paused',3:'buffering',5:'cued'};
+  const recent = commandHistory[c].filter(command => Date.now() - command.at < 2500);
+  const match = recent.slice().reverse().find(command => command.expected === value && !command.observed);
+  if (match) match.observed = true;
+  diagnostic('player-state', {
+    player:c, state:names[value] || value,
+    attribution:match ? 'matches-recent-app-command (correlation, not proof)' : 'no-matching-app-command (YouTube/browser/native-control)',
+    command:match ? {sequence:match.sequence, method:match.method, reason:match.reason} : null,
+    recentCommands:recent.map(command => ({sequence:command.sequence, method:command.method, reason:command.reason}))
+  });
+  const both = categories.every(k => ready[k] && players[k].getPlayerState() === 1);
+  $('sessionBadge').textContent = both ? 'IN YOUR ELEMENT' : 'YOUR SESSION';
+  const other = c === 'workout' ? 'entertainment' : 'workout';
+  if (value === 2 && playing && !match && ready[other] && players[other].getPlayerState() === 1) {
+    $('mobilePlaybackHelp').hidden = false;
+    status(`${c === 'workout' ? 'Workout' : 'Entertainment'} paused without a matching app pause request. YouTube or your browser may limit this combination. ${mobileAudioMode ? 'Muted mode is already on; try the individual video play buttons or choose one player below.' : 'Try muted workout mode, then tap Play both again.'}`);
+  }
+}
 function youtubeAPI() {
   if (window.YT?.Player) return Promise.resolve();
   if (apiPromise) return apiPromise;
@@ -48,36 +115,47 @@ function youtubeAPI() {
   });
   return apiPromise;
 }
-function applySound(c) { if (ready[c]) { players[c].setVolume(state[c+'Volume']); muted[c] ? players[c].mute() : players[c].unMute(); } }
-function invoke(c, method, ...args) { if (ready[c]) players[c][method](...args); }
+function applySound(c) { if (ready[c]) { invoke(c, 'setVolume', state[c+'Volume']); invoke(c, muted[c] ? 'mute' : 'unMute'); } }
+function command(c, method, args = [], reason = 'app control') {
+  if (!ready[c]) { diagnostic('command-skipped', {player:c, method, reason:'player not ready'}); return; }
+  const expected = {playVideo:1,pauseVideo:2,loadVideoById:1,cueVideoById:5}[method];
+  const record = {sequence:++commandSequence, at:Date.now(), method, reason, expected, observed:false};
+  commandHistory[c].push(record);
+  if (commandHistory[c].length > 24) commandHistory[c].shift();
+  diagnostic('app-command', {player:c, sequence:record.sequence, method, reason});
+  players[c][method](...args);
+}
+function invoke(c, method, ...args) { command(c, method, args); }
 function loadVideo(c, id) {
   pending[c] = id;
   $(c+'PlayerError').hidden = true;
   if (ready[c]) {
-    players[c][playing ? 'loadVideoById' : 'cueVideoById'](id);
-    pending[c] = null; applySound(c);
+    applySound(c);
+    command(c, playing && !isIOS ? 'loadVideoById' : 'cueVideoById', [id], 'replace video');
+    pending[c] = null;
   }
 }
 function createPlayer(c) {
   players[c] = new YT.Player(c+'Player', {
     width:'100%',height:'100%',videoId:pending[c],
-    playerVars:{playsinline:1,autoplay:0,rel:0,origin:location.origin},
+    playerVars:{playsinline:1,autoplay:0,fs:isIOS ? 0 : 1,rel:0,origin:location.origin},
     events:{onReady: e => {
       ready[c] = true;
       e.target.getIframe().title = c === 'workout' ? 'Workout YouTube video' : 'Entertainment YouTube video';
-      if (pending[c]) { e.target[playing ? 'loadVideoById' : 'cueVideoById'](pending[c]); pending[c]=null; }
+      diagnostic('player-ready', {player:c, inline:true});
+      // Set mute state before any load/play request, including after replacement.
       applySound(c);
-      if (playing) e.target.playVideo();
-      if (categories.every(k => ready[k])) status('Your mix is ready. If playback is paused, press Play both or use each video’s play button.');
+      if (pending[c]) { command(c, playing && !isIOS ? 'loadVideoById' : 'cueVideoById', [pending[c]], 'initial video'); pending[c]=null; }
+      if (playing && !isIOS) command(c, 'playVideo', [], 'desktop session start');
+      if (categories.every(k => ready[k])) status(isIOS ? 'Both videos are ready. Tap Play both now to start from a fresh touch. If one pauses, try muted workout mode.' : 'Your mix is ready. If playback is paused, press Play both or use each video’s play button.');
     }, onError:e => {
       const message = e.data === 153 ? 'YouTube could not verify this page. Open the app through an HTTP server or a hosted URL, then try again.' : 'This video is unavailable or does not allow embedded playback. Try another YouTube video.';
       $(c+'PlayerError').textContent = message; $(c+'PlayerError').hidden=false;
       status((c === 'workout' ? 'Workout: ' : 'Entertainment: ') + message);
-    },onAutoplayBlocked:() => status('Your browser paused automatic playback. Press Play both, or press play inside each YouTube player.'),
-    onStateChange:() => {
-      const both = categories.every(k => ready[k] && players[k].getPlayerState() === 1);
-      $('sessionBadge').textContent = both ? 'IN YOUR ELEMENT' : 'YOUR SESSION';
-    }}
+    },onAutoplayBlocked:() => {
+      diagnostic('playback-blocked', {player:c}); $('mobilePlaybackHelp').hidden = false;
+      status('YouTube reports a blocked playback request. Tap Play both again or use each video’s play button. If one pauses, try muted workout mode.');
+    }, onStateChange:event => handlePlayerState(c,event.data)}
   });
   if (c === 'workout') workoutPlayer = players[c]; else entertainmentPlayer = players[c];
 }
@@ -93,7 +171,7 @@ async function startSession(event) {
   });
   if (!valid) { status('Check the video links above.'); return; }
   categories.forEach(c => { state[c+'Url'] = $(c+'Url').value.trim(); }); persist();
-  playing=true; status('Connecting your two videos…');
+  playing=!isIOS; status('Connecting your two videos…');
   const submit = document.querySelector('.start'); submit.disabled=true;
   try {
     await youtubeAPI();
@@ -114,7 +192,7 @@ function setMode(mode) {
 async function replace(c, url) {
   const id = videoId(url); if (!id) return;
   state[c+'Url']=url.trim(); $(c+'Url').value=state[c+'Url']; $(c+'Error').textContent=''; $(c+'Url').setAttribute('aria-invalid','false'); persist();
-  if (initialized) { loadVideo(c,id); status(`${c === 'workout' ? 'Workout' : 'Entertainment'} changed. Your other video keeps its place.`); }
+  if (initialized) { loadVideo(c,id); status(`${c === 'workout' ? 'Workout' : 'Entertainment'} changed. Your other video keeps its place.${isIOS ? ' Tap play inside the changed video to start it.' : ''}`); }
   else status('Video added to setup. Add your other video and press Start session.');
 }
 function openEditor(mode,c) {
@@ -156,14 +234,39 @@ categories.forEach(c=> {
   $(c+'Url').value=state[c+'Url']; $(c+'Volume').value=state[c+'Volume']; $(c+'VolumeValue').textContent=state[c+'Volume']+'%';
   $(c+'Volume').addEventListener('input',e=>{state[c+'Volume']=Number(e.target.value);$(c+'VolumeValue').textContent=e.target.value+'%';applySound(c);persist();});
   document.querySelector(`[data-mute="${c}"]`).onclick=e=> {
-    muted[c]=!muted[c];e.currentTarget.textContent=muted[c]?'×':'♫';e.currentTarget.setAttribute('aria-pressed',String(muted[c]));e.currentTarget.setAttribute('aria-label',`${muted[c]?'Unmute':'Mute'} ${c}`);applySound(c);
+    // Leaving the mode restores the old mix before applying this manual choice.
+    const nextMuted = !muted[c];
+    if (mobileAudioMode) setMobileAudioMode(false);
+    muted[c]=nextMuted;updateMuteButton(c);applySound(c);
   };
 });
 $('position').value=state.position; $('stage').dataset.position=state.position;
 $('position').onchange=e=>{state.position=e.target.value;$('stage').dataset.position=state.position;persist();};
 $('setupForm').onsubmit=startSession;
-$('playBoth').onclick=()=>{if(!initialized){startSession();return;}playing=true;categories.forEach(c=>invoke(c,'playVideo'));status('Playing your mix. If a video stays paused, use its YouTube play button.');};
-$('pauseBoth').onclick=()=>{playing=false;categories.forEach(c=>invoke(c,'pauseVideo'));status(initialized?'Both videos paused. Take your time.':'Add your videos to start a session.');};
+$('playBoth').onclick=()=>{
+  if(!initialized){startSession();return;}
+  if(!categories.every(c=>ready[c])){status('YouTube is still getting ready. Tap Play both again when both videos are ready.');return;}
+  playing=true;
+  // Both calls are synchronous in this real click handler. No await, timer, or retry loop.
+  categories.forEach(c=>applySound(c));
+  command('workout','playVideo',[],'Play Both button');
+  command('entertainment','playVideo',[],'Play Both button');
+  status('Play requested for both videos. If one pauses, try muted workout mode or its YouTube play button.');
+};
+$('pauseBoth').onclick=()=>{playing=false;categories.forEach(c=>command(c,'pauseVideo',[],'Pause Both button'));status(initialized?'Both videos paused. Take your time.':'Add your videos to start a session.');};
+$('expandView').onclick=()=>setExpanded(!expanded);
+$('mobileAudioMode').onclick=()=>setMobileAudioMode(!mobileAudioMode);
+$('showPlaybackHelp').onclick=()=>{
+  $('mobilePlaybackHelp').hidden=false;
+  $('mobilePlaybackHelp').open=!$('mobilePlaybackHelp').open;
+};
+document.querySelectorAll('[data-play-only]').forEach(button=>button.onclick=()=>{
+  const c=button.dataset.playOnly,other=c==='workout'?'entertainment':'workout';
+  if(!ready[c]){status('Start a session and wait for the videos to be ready first.');return;}
+  playing=false; applySound(c);
+  command(other,'pauseVideo',[],'Single player button'); command(c,'playVideo',[],'Single player button');
+  status(`Playing ${c} only. Both players remain on the page.`);
+});
 $('restart').onclick=()=>{if(!ready.workout){status('Start a session before restarting your workout.');return;}invoke('workout','seekTo',0,true);status('Workout back to the beginning. Entertainment stays where it is.');};
 $('swap').onclick=()=>{$('stage').dataset.main=$('stage').dataset.main==='workout'?'entertainment':'workout';setMode('mixed');status('Screens swapped. Playback stays in place.');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
@@ -192,5 +295,8 @@ $('surprise').onclick=()=> {
 function demo(){ $('workoutUrl').value='https://www.youtube.com/watch?v=UBMk30rjy0o';$('entertainmentUrl').value='https://www.youtube.com/watch?v=dQw4w9WgXcQ';startSession(); }
 $('demo').onclick=demo;$('emptyDemo').onclick=demo;
 updateLayout();renderFavorites();
+$('mobilePlaybackHelp').hidden = !isIOS;
+if (isIOS) $('platformNote').textContent = 'On iPhone/iPad, load your videos, then tap Play both. If starting one pauses the other, try muted workout mode. Use your device volume buttons if a slider has no effect.';
+diagnostic('session-environment', {iosHint:isIOS, note:'iOS hint is not a playback capability test'});
 
 })();
