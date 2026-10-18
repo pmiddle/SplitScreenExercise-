@@ -116,3 +116,63 @@ body.expanded .session{position:fixed;inset:0;z-index:50;display:flex;flex-direc
   .expanded .mobile-help[open] .mobile-help-content{position:absolute;z-index:6;left:0;right:0;bottom:100%;max-height:65dvh;overflow:auto;background:#f0edfa;border:1px solid var(--line);border-radius:12px;padding:12px}
 }
 @media(max-width:900px),(pointer:coarse){.video-shell{transition:none}} @media(max-width:600px){.expanded .mixer{flex-direction:column}.expanded .sound-row{width:100%}.expanded .sound-row label{min-width:84px;max-width:none;font-size:10px;overflow-wrap:normal}.expanded .sound-row input{flex:1;max-width:none}.expanded output{font-size:10px;min-width:30px}}
+
+/* Workout timer: independent of iframe layout and stored video controls. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.timer-panel{padding:18px 22px;margin-top:15px;min-width:0}
+.timer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.timer-toolbar h2{font-size:13px;font-weight:600;margin:0 0 5px}
+.timer-toolbar h2 span{margin-left:8px;color:var(--violet)}
+.timer-toolbar small{font-size:10px;color:#8b8f7f}
+#timerEnabled{font-size:11px;min-height:44px;white-space:nowrap;background:#f7f8f2}
+#timerEnabled[aria-pressed=true]{background:var(--lime);border-color:#bedb7c}
+#timerSetup{margin-top:12px;border-top:1px solid var(--line)}
+#timerSetup summary{min-height:44px;padding:14px 0 8px;font-size:12px;cursor:pointer;font-weight:600}
+#timerSetup summary span{font-size:10px;color:#919586;font-weight:400;margin-left:10px}
+.timer-intro-fields{display:flex;gap:24px;align-items:center;margin-top:14px}
+.timer-intro-fields>label{font-size:11px}
+.timer-intro-fields input[type=text],#timerOffset{display:block;margin-top:7px;width:150px}
+.timer-panel input:not([type=checkbox]){background:#fafbf7;border:1px solid var(--line);border-radius:8px;min-height:44px;padding:10px 12px;font-size:14px;color:var(--ink)}
+.timer-checkbox{display:grid;grid-template-columns:24px 1fr;align-items:center;gap:4px 8px;min-height:44px;cursor:pointer}
+.timer-checkbox input{width:22px;height:22px;accent-color:var(--violet);grid-row:span 2;margin:0}
+.timer-checkbox small{grid-column:2;font-size:10px;color:#8b8f7f}
+.timer-help,.timer-notice{font-size:10px;line-height:1.6;color:#8b8f7f}
+.timer-notice{margin:10px 0 0}
+.timer-segments{display:grid;gap:14px;margin:16px 0}
+.timer-segment{margin:0;padding:14px;border:1px solid var(--line);border-radius:12px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px;align-items:end;background:#fbfcf8}
+.timer-segment legend{padding:0 7px;color:#81709e;font-size:10px;font-weight:700;letter-spacing:.5px}
+.timer-segment label{font-size:10px;color:#74796a}
+.timer-segment input{width:100%;margin-top:7px}
+.timer-panel button{min-height:44px;font-size:11px}
+.timer-delete{color:#9b6666;background:#fff}
+.timer-save-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.stage{--pip-width:clamp(356px,33%,440px);--pip-inset:18px}
+.timer-overlay{position:absolute;z-index:4;bottom:var(--pip-inset);left:var(--pip-inset);display:flex;flex-direction:column;gap:3px;min-width:106px;max-width:160px;background:#f8f8f2f5;color:var(--ink);border:1px solid #ffffffaa;border-radius:10px;padding:9px 12px;box-shadow:0 3px 14px #0002;pointer-events:none;font-variant-numeric:tabular-nums}
+.timer-overlay>span{font-size:10px;font-weight:800;letter-spacing:1px;color:#6c8550}
+.timer-overlay>strong{font-size:27px;font-weight:800;line-height:1.05;letter-spacing:-1px}
+.timer-overlay>small{font-size:9px;color:#7b806f}
+.timer-overlay[data-phase=REST]{background:#f0e9fff5}
+.timer-overlay[data-phase=REST]>span{color:var(--violet)}
+.timer-overlay[data-phase="GET READY"]>span,.timer-overlay[data-phase=DONE]>span{color:#8c7b5e}
+.stage[data-main=entertainment] .timer-overlay{left:auto;right:calc(var(--pip-width) + var(--pip-inset) + 10px)}
+.stage[data-main=entertainment][data-position=top-left] .timer-overlay{left:calc(var(--pip-width) + var(--pip-inset) + 10px);right:auto;top:var(--pip-inset);bottom:auto}
+.stage[data-main=entertainment][data-position=top-right] .timer-overlay{top:var(--pip-inset);bottom:auto}
+.stage[data-main=entertainment][data-position=bottom-left] .timer-overlay{left:calc(var(--pip-width) + var(--pip-inset) + 10px);right:auto}
+.expanded .timer-panel{position:absolute;top:max(12px,env(safe-area-inset-top,0px));left:max(14px,env(safe-area-inset-left,0px));z-index:5;padding:0;margin:0;background:transparent;border:0}
+.expanded .timer-toolbar>div,.expanded #timerSetup,.expanded .timer-notice{display:none}
+.expanded #timerEnabled{background:#f8f8f2ed;font-size:10px;min-height:44px;padding:8px 11px;box-shadow:0 2px 12px #0002}
+.expanded #timerEnabled[aria-pressed=true]{background:var(--lime)}
+@media(max-width:900px),(pointer:coarse){.timer-panel input:not([type=checkbox]){font-size:16px}.timer-segment{grid-template-columns:repeat(4,minmax(0,1fr))}.timer-delete{grid-column:1/-1;justify-self:end}.timer-segment label{font-size:11px}}
+@media(max-width:600px){
+  .timer-panel{padding:16px}.timer-toolbar h2{font-size:12px}.timer-toolbar small{font-size:9px}
+  .timer-intro-fields{align-items:flex-start;flex-direction:column;gap:16px}
+  .timer-segment{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px}
+  #timerSetup summary span{display:none}
+  .timer-panel button{font-size:11px}.timer-save-actions button{flex:1}
+  .stage{--pip-width:42%;--pip-inset:8px}
+  .timer-overlay{min-width:84px;max-width:100px;padding:6px 8px;gap:2px;border-radius:8px}
+  .timer-overlay>span{font-size:8px;letter-spacing:.5px}.timer-overlay>strong{font-size:22px}.timer-overlay>small{font-size:8px}
+  .expanded #timerEnabled{font-size:9px;padding:6px 8px}
+}
+@media(orientation:landscape) and (max-height:600px) and (max-width:1200px){.stage{--pip-width:38%}}
+

@@ -41,6 +41,32 @@ const commandHistory = {workout:[], entertainment:[]};
 let commandSequence = 0, mobileAudioMode = false, expanded = false, restoreFocus, savedScroll = 0;
 let audioBeforeMode = null;
 let playing = false, initialized = false, apiPromise, filter = 'all', dialogMode = 'save', replaceCategory = 'entertainment';
+let entertainmentDucked = false, entertainmentAudioRevision = 0;
+const intervalTimer = new window.MoveMixTimer({
+  sample:()=> {
+    if(!ready.workout)return null;
+    return {time:workoutPlayer.getCurrentTime(),state:workoutPlayer.getPlayerState(),videoId:videoId(workoutPlayer.getVideoUrl()),rate:workoutPlayer.getPlaybackRate()};
+  },
+  beginDuck:()=> {
+    if(!ready.entertainment)return ()=>{};
+    const player=entertainmentPlayer, revision=entertainmentAudioRevision;
+    const volume=player.getVolume(), wasMuted=player.isMuted();
+    entertainmentDucked=true;
+    command('entertainment','mute',[],'Timer cue duck');
+    let released=false;
+    return ()=> {
+      if(released)return;released=true;entertainmentDucked=false;
+      if(!ready.entertainment || entertainmentPlayer!==player)return;
+      // Preserve actual native-player sound settings, unless an app control changed
+      // during this cue. Never write a temporary duck to localStorage.
+      if(revision===entertainmentAudioRevision){
+        command('entertainment','setVolume',[volume],'Timer cue restore');
+        command('entertainment',wasMuted?'mute':'unMute',[],'Timer cue restore');
+      }else applySound('entertainment');
+    };
+  },
+  log:diagnostic
+});
 function diagnostic(type, detail) {
   if (debug) console.info('[MOVE/MIX]', type, {at: new Date().toISOString(), ...detail});
 }
@@ -59,6 +85,7 @@ function setMobileAudioMode(enabled) {
     Object.assign(muted, audioBeforeMode); audioBeforeMode = null;
   }
   mobileAudioMode = enabled;
+  entertainmentAudioRevision++;
   $('mobileAudioMode').setAttribute('aria-pressed', String(enabled));
   $('mobileAudioMode').textContent = enabled ? 'Muted workout mode: on' : 'Try muted workout mode';
   categories.forEach(c => { updateMuteButton(c); applySound(c); });
@@ -84,6 +111,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && expanded && !$('editor').open) setExpanded(false);
 });
 function handlePlayerState(c, value) {
+  if(c==='workout' && value!==1)intervalTimer.resync();
   const names = {'-1':'unstarted',0:'ended',1:'playing',2:'paused',3:'buffering',5:'cued'};
   const recent = commandHistory[c].filter(command => Date.now() - command.at < 2500);
   const match = recent.slice().reverse().find(command => command.expected === value && !command.observed);
@@ -115,7 +143,7 @@ function youtubeAPI() {
   });
   return apiPromise;
 }
-function applySound(c) { if (ready[c]) { invoke(c, 'setVolume', state[c+'Volume']); invoke(c, muted[c] ? 'mute' : 'unMute'); } }
+function applySound(c) { if (ready[c]) { invoke(c, 'setVolume', state[c+'Volume']); invoke(c, muted[c] || (c==='entertainment' && entertainmentDucked) ? 'mute' : 'unMute'); } }
 function command(c, method, args = [], reason = 'app control') {
   if (!ready[c]) { diagnostic('command-skipped', {player:c, method, reason:'player not ready'}); return; }
   const expected = {playVideo:1,pauseVideo:2,loadVideoById:1,cueVideoById:5}[method];
@@ -127,6 +155,8 @@ function command(c, method, args = [], reason = 'app control') {
 }
 function invoke(c, method, ...args) { command(c, method, args); }
 function loadVideo(c, id) {
+  if(c==='workout')intervalTimer.bindWorkout(id);
+  else intervalTimer.audio.stop();
   pending[c] = id;
   $(c+'PlayerError').hidden = true;
   if (ready[c]) {
@@ -171,6 +201,8 @@ async function startSession(event) {
   });
   if (!valid) { status('Check the video links above.'); return; }
   categories.forEach(c => { state[c+'Url'] = $(c+'Url').value.trim(); }); persist();
+  intervalTimer.bindWorkout(ids.workout);
+  intervalTimer.unlockFromGesture();
   playing=!isIOS; status('Connecting your two videos…');
   const submit = document.querySelector('.start'); submit.disabled=true;
   try {
@@ -192,6 +224,7 @@ function setMode(mode) {
 async function replace(c, url) {
   const id = videoId(url); if (!id) return;
   state[c+'Url']=url.trim(); $(c+'Url').value=state[c+'Url']; $(c+'Error').textContent=''; $(c+'Url').setAttribute('aria-invalid','false'); persist();
+  if(c==='workout' && !initialized)intervalTimer.bindWorkout(id);
   if (initialized) { loadVideo(c,id); status(`${c === 'workout' ? 'Workout' : 'Entertainment'} changed. Your other video keeps its place.${isIOS ? ' Tap play inside the changed video to start it.' : ''}`); }
   else status('Video added to setup. Add your other video and press Start session.');
 }
@@ -232,11 +265,12 @@ function renderFavorites() {
 }
 categories.forEach(c=> {
   $(c+'Url').value=state[c+'Url']; $(c+'Volume').value=state[c+'Volume']; $(c+'VolumeValue').textContent=state[c+'Volume']+'%';
-  $(c+'Volume').addEventListener('input',e=>{state[c+'Volume']=Number(e.target.value);$(c+'VolumeValue').textContent=e.target.value+'%';applySound(c);persist();});
+  $(c+'Volume').addEventListener('input',e=>{if(c==='entertainment')entertainmentAudioRevision++;state[c+'Volume']=Number(e.target.value);$(c+'VolumeValue').textContent=e.target.value+'%';applySound(c);persist();});
   document.querySelector(`[data-mute="${c}"]`).onclick=e=> {
     // Leaving the mode restores the old mix before applying this manual choice.
     const nextMuted = !muted[c];
     if (mobileAudioMode) setMobileAudioMode(false);
+    if(c==='entertainment')entertainmentAudioRevision++;
     muted[c]=nextMuted;updateMuteButton(c);applySound(c);
   };
 });
@@ -244,6 +278,7 @@ $('position').value=state.position; $('stage').dataset.position=state.position;
 $('position').onchange=e=>{state.position=e.target.value;$('stage').dataset.position=state.position;persist();};
 $('setupForm').onsubmit=startSession;
 $('playBoth').onclick=()=>{
+  intervalTimer.unlockFromGesture();
   if(!initialized){startSession();return;}
   if(!categories.every(c=>ready[c])){status('YouTube is still getting ready. Tap Play both again when both videos are ready.');return;}
   playing=true;
@@ -253,7 +288,7 @@ $('playBoth').onclick=()=>{
   command('entertainment','playVideo',[],'Play Both button');
   status('Play requested for both videos. If one pauses, try muted workout mode or its YouTube play button.');
 };
-$('pauseBoth').onclick=()=>{playing=false;categories.forEach(c=>command(c,'pauseVideo',[],'Pause Both button'));status(initialized?'Both videos paused. Take your time.':'Add your videos to start a session.');};
+$('pauseBoth').onclick=()=>{playing=false;intervalTimer.resync();categories.forEach(c=>command(c,'pauseVideo',[],'Pause Both button'));status(initialized?'Both videos paused. Take your time.':'Add your videos to start a session.');};
 $('expandView').onclick=()=>setExpanded(!expanded);
 $('mobileAudioMode').onclick=()=>setMobileAudioMode(!mobileAudioMode);
 $('showPlaybackHelp').onclick=()=>{
@@ -263,11 +298,12 @@ $('showPlaybackHelp').onclick=()=>{
 document.querySelectorAll('[data-play-only]').forEach(button=>button.onclick=()=>{
   const c=button.dataset.playOnly,other=c==='workout'?'entertainment':'workout';
   if(!ready[c]){status('Start a session and wait for the videos to be ready first.');return;}
+  if(c==='workout')intervalTimer.unlockFromGesture();
   playing=false; applySound(c);
   command(other,'pauseVideo',[],'Single player button'); command(c,'playVideo',[],'Single player button');
   status(`Playing ${c} only. Both players remain on the page.`);
 });
-$('restart').onclick=()=>{if(!ready.workout){status('Start a session before restarting your workout.');return;}invoke('workout','seekTo',0,true);status('Workout back to the beginning. Entertainment stays where it is.');};
+$('restart').onclick=()=>{if(!ready.workout){status('Start a session before restarting your workout.');return;}intervalTimer.resync();invoke('workout','seekTo',0,true);status('Workout back to the beginning. Entertainment stays where it is.');};
 $('swap').onclick=()=>{$('stage').dataset.main=$('stage').dataset.main==='workout'?'entertainment':'workout';setMode('mixed');status('Screens swapped. Playback stays in place.');};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 document.querySelectorAll('[data-change]').forEach(b=>b.onclick=()=>openEditor('replace',b.dataset.change));
@@ -295,6 +331,7 @@ $('surprise').onclick=()=> {
 function demo(){ $('workoutUrl').value='https://www.youtube.com/watch?v=UBMk30rjy0o';$('entertainmentUrl').value='https://www.youtube.com/watch?v=dQw4w9WgXcQ';startSession(); }
 $('demo').onclick=demo;$('emptyDemo').onclick=demo;
 updateLayout();renderFavorites();
+intervalTimer.bindWorkout(videoId(state.workoutUrl));
 $('mobilePlaybackHelp').hidden = !isIOS;
 if (isIOS) $('platformNote').textContent = 'On iPhone/iPad, load your videos, then tap Play both. If starting one pauses the other, try muted workout mode. Use your device volume buttons if a slider has no effect.';
 diagnostic('session-environment', {iosHint:isIOS, note:'iOS hint is not a playback capability test'});
