@@ -28,7 +28,7 @@ categories.forEach(c => {
 state.favorites = Array.isArray(state.favorites) ? state.favorites.filter(f => f && categories.includes(f.category) && typeof f.name === 'string' && videoId(f.url) === f.videoId) : [];
 if (!['bottom-right','bottom-left','top-right','top-left'].includes(state.position)) state.position = 'bottom-right';
 function persist() { try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch { status('Device storage is unavailable. Your current mix still works, but changes cannot be saved.'); } }
-function status(message) { $('status').textContent = message; }
+function status(message) { $('status').textContent = message; $('setupStatus').textContent = message; }
 const players = {workout: null, entertainment: null};
 let workoutPlayer, entertainmentPlayer;
 const ready = {workout:false, entertainment:false};
@@ -42,6 +42,62 @@ let commandSequence = 0, mobileAudioMode = false, expanded = false, restoreFocus
 let audioBeforeMode = null;
 let playing = false, initialized = false, apiPromise, filter = 'all', dialogMode = 'save', replaceCategory = 'entertainment';
 let entertainmentAudioRevision = 0;
+let view = 'setup', selectedWorkout = null, queueDraft = [], entertainmentQueue = [], queueIndex = 0;
+let keepEntertainment = true, continuationBusy = false;
+function showView(next) {
+  view=next; document.body.dataset.view=next;
+  $('setupView').hidden=next!=='setup'; $('workoutView').hidden=next!=='workout';
+  window.scrollTo(0,0);
+  if(next==='workout') $('workoutView').focus({preventScroll:true});
+}
+function updateSelection() {
+  document.querySelectorAll('[data-pick-id]').forEach(button=>{
+    const active=button.dataset.pickId===selectedWorkout;
+    button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));
+  });
+}
+function chooseWorkout(pick) {
+  selectedWorkout=pick.videoId; $('workoutUrl').value=''; $('workoutError').textContent='';
+  $('workoutUrl').setAttribute('aria-invalid','false');updateSelection();
+}
+function renderQueueFields() {
+  const list=$('queueFields');list.replaceChildren();
+  queueDraft.forEach((url,index)=>{
+    const row=document.createElement('div');row.className='queue-row';
+    const label=document.createElement('label');label.textContent=`Next video ${index+1}`;
+    const input=document.createElement('input');input.type='text';input.placeholder='Paste another YouTube URL';input.value=url;
+    input.setAttribute('aria-label',`Next video ${index+1} URL`);
+    input.oninput=()=>{queueDraft[index]=input.value;};label.append(input);
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label',`Remove next video ${index+1}`);
+    remove.onclick=()=>{queueDraft.splice(index,1);renderQueueFields();};row.append(label,remove);list.append(row);
+  });
+  $('addNextVideo').hidden=queueDraft.length>=2;
+}
+function updateContinuation() {
+  $('keepEntertainment').checked=keepEntertainment;$('sessionKeepEntertainment').checked=keepEntertainment;
+  $('queueStatus').textContent=!keepEntertainment?'Continuation off':entertainmentQueue.length>1?`Video ${queueIndex+1} of ${entertainmentQueue.length} · queue repeats`:'Replay current video';
+}
+function captureEntertainmentSound() {
+  if(!ready.entertainment||entertainmentDucks.active)return;
+  try {
+    const volume=entertainmentPlayer.getVolume();if(Number.isFinite(volume))state.entertainmentVolume=Math.max(0,Math.min(100,volume));
+    muted.entertainment=entertainmentPlayer.isMuted();
+    $('entertainmentVolume').value=state.entertainmentVolume;$('entertainmentVolumeValue').textContent=state.entertainmentVolume+'%';updateMuteButton('entertainment');
+  } catch {}
+}
+function continueEntertainment() {
+  if(view!=='workout'||!keepEntertainment||!playing||!ready.entertainment||continuationBusy)return;
+  continuationBusy=true;captureEntertainmentSound();
+  // The same iframe stays alive. Never touch the workout or the Quick Timer.
+  if(entertainmentQueue.length>1) {
+    queueIndex=(queueIndex+1)%entertainmentQueue.length;
+    const next=entertainmentQueue[queueIndex];state.entertainmentUrl=next.url;$('entertainmentUrl').value=next.url;
+    applySound('entertainment');command('entertainment','loadVideoById',[next.id],'Entertainment queue continuation');
+  } else {
+    applySound('entertainment');command('entertainment','seekTo',[0,true],'Entertainment replay');command('entertainment','playVideo',[],'Entertainment replay');
+  }
+  updateContinuation();status('Entertainment continuing. Your workout keeps its place.');
+}
 const entertainmentDucks = new window.MoveMixAudioDucker({
   player:()=>ready.entertainment?entertainmentPlayer:null,
   revision:()=>entertainmentAudioRevision,
@@ -105,6 +161,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && expanded && !$('editor').open) setExpanded(false);
 });
 function handlePlayerState(c, value) {
+  if(c==='entertainment'){if(value===1){continuationBusy=false;if(view==='workout')playing=true;}if(value===0)continueEntertainment();}
   if(c==='workout' && value!==1)intervalTimer.resync();
   const names = {'-1':'unstarted',0:'ended',1:'playing',2:'paused',3:'buffering',5:'cued'};
   const recent = commandHistory[c].filter(command => Date.now() - command.at < 2500);
@@ -188,23 +245,32 @@ async function startSession(event) {
   let valid = true;
   const ids = {};
   categories.forEach(c => {
-    ids[c] = videoId($(c+'Url').value);
+    ids[c] = c==='workout' && selectedWorkout ? selectedWorkout : videoId($(c+'Url').value);
     $(c+'Error').textContent = ids[c] ? '' : 'Paste a valid YouTube video link to get started.';
     $(c+'Url').setAttribute('aria-invalid', String(!ids[c]));
     if (!ids[c]) valid=false;
   });
+  const queueItems=queueDraft.map(url=>url.trim()).filter(Boolean);
+  $('queueError').textContent=queueItems.some(url=>!videoId(url))?'Use valid YouTube video links for your next videos.':'';
+  if($('queueError').textContent)valid=false;
   if (!valid) { status('Check the video links above.'); return; }
-  categories.forEach(c => { state[c+'Url'] = $(c+'Url').value.trim(); }); persist();
+  if(selectedWorkout)state.workoutUrl=`https://www.youtube.com/watch?v=${selectedWorkout}`;
+  categories.forEach(c => { if(c!=='workout'||!selectedWorkout)state[c+'Url'] = $(c+'Url').value.trim(); }); persist();
+  quickTimer.clock.cancel();continuationBusy=false;queueIndex=0;
+  entertainmentQueue=[{id:ids.entertainment,url:state.entertainmentUrl},...queueItems.map(url=>({id:videoId(url),url}))];
+  keepEntertainment=$('keepEntertainment').checked;updateContinuation();showView('workout');
+  if(isIOS&&!mobileAudioMode)setMobileAudioMode(true);
   intervalTimer.bindWorkout(ids.workout);
   intervalTimer.unlockFromGesture();
   playing=!isIOS; status('Connecting your two videos…');
   const submit = document.querySelector('.start'); submit.disabled=true;
   try {
     await youtubeAPI();
+    if(view!=='workout')return;
     $('stageEmpty').hidden=true;
     categories.forEach(c => { $(c+'Shell').hidden=false; loadVideo(c,ids[c]); if (!players[c]) createPlayer(c); });
     initialized=true; updateLayout(); $('sessionBadge').textContent='YOUR SESSION';
-  } catch(e) {status(e.message);} finally {submit.disabled=false;}
+  } catch(e) {showView('setup');status(e.message);} finally {submit.disabled=false;}
 }
 function updateLayout() {
   const main = $('stage').dataset.main;
@@ -218,8 +284,9 @@ function setMode(mode) {
 async function replace(c, url) {
   const id = videoId(url); if (!id) return;
   state[c+'Url']=url.trim(); $(c+'Url').value=state[c+'Url']; $(c+'Error').textContent=''; $(c+'Url').setAttribute('aria-invalid','false'); persist();
-  if(c==='workout' && !initialized)intervalTimer.bindWorkout(id);
-  if (initialized) { loadVideo(c,id); status(`${c === 'workout' ? 'Workout' : 'Entertainment'} changed. Your other video keeps its place.${isIOS ? ' Tap play inside the changed video to start it.' : ''}`); }
+  if(c==='workout'){selectedWorkout=null;updateSelection();if(!initialized)intervalTimer.bindWorkout(id);}
+  if(c==='entertainment'&&view==='workout'){captureEntertainmentSound();entertainmentQueue=[{id,url:url.trim()}];queueIndex=0;continuationBusy=false;updateContinuation();}
+  if (initialized && view==='workout') { loadVideo(c,id); status(`${c === 'workout' ? 'Workout' : 'Entertainment'} changed. Your other video keeps its place.${isIOS ? ' Tap play inside the changed video to start it.' : ''}`); }
   else status('Video added to setup. Add your other video and press Start session.');
 }
 function openEditor(mode,c) {
@@ -260,7 +327,7 @@ function renderFavorites() {
 function renderPicks(){
   const list=$('workoutPicks');list.replaceChildren();
   (window.BUILT_IN_WORKOUTS||[]).forEach(pick=>{
-    const button=document.createElement('button');button.className='pick-card';
+    const button=document.createElement('button');button.className='pick-card';button.type='button';button.dataset.pickId=pick.videoId;button.setAttribute('aria-pressed',String(selectedWorkout===pick.videoId));
     const image=document.createElement('img');image.src=pick.thumbnail||`https://i.ytimg.com/vi/${pick.videoId}/hqdefault.jpg`;image.alt='';image.loading='lazy';
     const copy=document.createElement('span');copy.className='pick-copy';
     const title=document.createElement('b');title.textContent=pick.title;
@@ -268,7 +335,7 @@ function renderPicks(){
     const tags=document.createElement('span');tags.textContent=[pick.duration?`${Math.round(pick.duration/60)} min`:null,pick.category].filter(Boolean).join(' · ');
     if(pick.timerPreset&&!window.MoveMixAutomaticCues.validate({offset:0,...pick.timerPreset})){const badge=document.createElement('em');badge.textContent='Automatic cues';copy.append(badge);}
     copy.append(title,creator,tags);button.append(image,copy);button.setAttribute('aria-label',`Load ${pick.title} by ${pick.creator}`);
-    button.onclick=()=>{replace('workout',`https://www.youtube.com/watch?v=${pick.videoId}`);status(`${pick.title} added as your workout. ${initialized?'Your entertainment keeps its place.':'Add entertainment and press Start session.'}`);};
+    button.onclick=()=>chooseWorkout(pick);
     list.append(button);
   });
 }
@@ -276,7 +343,6 @@ $('workoutFavoritesLink').onclick=()=>{
   const button=document.querySelector('[data-filter="workout"]');if(button)button.click();
   $('favorites').scrollIntoView({behavior:'smooth',block:'start'});
 };
-$('workoutPasteLink').onclick=()=>{$('workoutUrl').focus();$('workoutUrl').scrollIntoView({behavior:'smooth',block:'center'});};
 categories.forEach(c=> {
   $(c+'Url').value=state[c+'Url']; $(c+'Volume').value=state[c+'Volume']; $(c+'VolumeValue').textContent=state[c+'Volume']+'%';
   $(c+'Volume').addEventListener('input',e=>{if(c==='entertainment')entertainmentAudioRevision++;state[c+'Volume']=Number(e.target.value);$(c+'VolumeValue').textContent=e.target.value+'%';applySound(c);persist();});
@@ -342,9 +408,19 @@ $('surprise').onclick=()=> {
   const current=videoId(state.entertainmentUrl);const options=all.filter(f=>f.videoId!==current);
   const pick=options[Math.floor(Math.random()*options.length)];if(pick)replace('entertainment',pick.url);
 };
-function demo(){ $('workoutUrl').value='https://www.youtube.com/watch?v=UBMk30rjy0o';$('entertainmentUrl').value='https://www.youtube.com/watch?v=dQw4w9WgXcQ';startSession(); }
+function demo(){ selectedWorkout=null;updateSelection();queueDraft=[];renderQueueFields(); $('workoutUrl').value='https://www.youtube.com/watch?v=UBMk30rjy0o';$('entertainmentUrl').value='https://www.youtube.com/watch?v=dQw4w9WgXcQ';startSession(); }
 $('demo').onclick=demo;$('emptyDemo').onclick=demo;
-updateLayout();renderFavorites();renderPicks();
+$('workoutUrl').addEventListener('input',()=>{selectedWorkout=null;updateSelection();});
+$('addNextVideo').onclick=()=>{if(queueDraft.length<2){queueDraft.push('');renderQueueFields();}};
+['keepEntertainment','sessionKeepEntertainment'].forEach(id=>$(id).onchange=()=>{keepEntertainment=$(id).checked;updateContinuation();});
+$('backToSetup').onclick=()=>{
+  if(expanded)setExpanded(false);playing=false;continuationBusy=false;
+  categories.forEach(c=>command(c,'pauseVideo',[],'Back to Setup'));
+  intervalTimer.audio.stop();intervalTimer.resync();showView('setup');status('Choose your next mix. Favorites and preferences are saved.');
+  if(entertainmentQueue[0])$('entertainmentUrl').value=entertainmentQueue[0].url;
+};
+document.querySelector('.nav-link').onclick=()=>{if(view==='workout')$('backToSetup').onclick();};
+updateLayout();renderFavorites();renderPicks();renderQueueFields();updateContinuation();showView('setup');
 intervalTimer.bindWorkout(videoId(state.workoutUrl));
 $('mobilePlaybackHelp').hidden = !isIOS;
 if (isIOS) $('platformNote').textContent = 'On iPhone/iPad, load your videos, then tap Play both. If starting one pauses the other, try muted workout mode. Use your device volume buttons if a slider has no effect.';

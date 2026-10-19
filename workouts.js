@@ -14,8 +14,29 @@
         {start:465,end:480,work:15,rest:0}
       ]}
     },
-    {id:'standing-core',title:'10 min Standing Abs',creator:'MadFit',videoId:'DNqkPbglnjU',duration:600,category:'Standing · No equipment'},
-    {id:'full-body',title:'20 min Full Body',creator:'Pamela Reif',videoId:'UBMk30rjy0o',duration:1200,category:'Full body · No equipment'}
+    {id:'silent-cardio',title:'10 min Silent Cardio',creator:'Pamela Reif',videoId:'gFeEUq2624Q',duration:600,category:'No jumping · No equipment'},
+    {id:'full-body',title:'20 min Full Body',creator:'Pamela Reif',videoId:'UBMk30rjy0o',duration:1200,category:'Full body · No equipment'},
+    {id:'beginner-abs',title:'10 min Beginner Abs',creator:'Pamela Reif',videoId:'1f8yoFFdkcY',duration:600,category:'Beginner · No equipment',
+      // User-supplied absolute video timestamps: 00:16–10:06.
+      // Fifteen 30s work intervals, fourteen 10s rests; no rest after the last work.
+      timerPreset:{offset:0,countdown:false,segments:[{start:16,end:606,work:30,rest:10}]}
+    },
+    {id:'lower-abs',title:'10 min Lower Abs',creator:'Pamela Reif',videoId:'54x6yjnzLms',duration:600,category:'Lower abs · No equipment',
+      // User-supplied absolute windows. The first block is 490s: its final
+      // nominal 30s interval clips to 10s at 8:25. No rest in any block.
+      timerPreset:{offset:0,countdown:false,segments:[
+        {start:15,end:505,work:30,rest:0},
+        {start:505,end:525,work:20,rest:0},
+        {start:525,end:615,work:30,rest:0}
+      ]}
+    },
+    // The following six additions intentionally have no Automatic Cues preset.
+    {id:'standing-cardio-dance',title:'30 min Standing Cardio Dance',creator:'Eleni Fit',videoId:'Zq0EH2E-oIs',duration:1800,category:'No jumping · Cardio HIIT'},
+    {id:'standing-waist-abs',title:'30 min Small Waist + Abs',creator:'Eleni Fit',videoId:'hutTtNxJBec',duration:1800,category:'Standing · No jumping'},
+    {id:'standing-abs-thigh',title:'30 min Standing Cardio · Abs + Thigh',creator:'Eleni Fit',videoId:'qpKXzVTfN4E',duration:1800,category:'No jumping · No repeats'},
+    {id:'arms-shoulders',title:'20 min Toned Arms + Shoulders',creator:'growingannanas',videoId:'P7k7ABUKmxo',duration:1200,category:'Dumbbells · Upper body'},
+    {id:'daily-strength',title:'10 min Daily Strength',creator:'growingannanas',videoId:'nUKKnkw7oAM',duration:600,category:'No equipment · No jumping'},
+    {id:'standing-back',title:'15 min Standing Back Workout',creator:'MIZI',videoId:'yimeburgZX8',duration:900,category:'Back · Upper body'}
   ];
   // Optional timerPreset shape (attach ONLY after checking every boundary):
   // timerPreset: { offset: 60, countdown: false,

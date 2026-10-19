@@ -219,3 +219,19 @@ body.expanded .session{position:fixed;inset:0;z-index:50;display:flex;flex-direc
   .expanded .mixer-grid{grid-area:5/1/6/3}
 }
 
+/* Two content-first views; player nodes stay mounted between sessions. */
+[hidden]{display:none!important}
+body[data-view=workout] .favorites,body[data-view=workout] .bottom-note{display:none}
+.setup-intro{padding:42px 0 28px}.setup-intro h1{font-size:clamp(36px,5vw,60px);line-height:1.08;margin:14px 0}.setup-intro h1 em{font-family:Georgia,serif;font-weight:400}.setup-intro p{color:#777d6e}
+body[data-view=setup] .setup{max-width:940px;margin:0 auto 40px;padding:28px}
+body[data-view=setup] #setupForm{display:flex;flex-direction:column;gap:26px;align-items:stretch}
+.setup-step{min-width:0}.setup-step h2{font-size:24px;margin:8px 0 18px}.setup-step h3{font-size:14px;margin:0}.setup-step .picks-heading{margin-bottom:12px}.setup-step label{display:block}
+.setup-step .workout-picks{margin-bottom:10px}.pick-card{cursor:pointer}.pick-card.selected{outline:2px solid #71854d;background:#f0f6de}.pick-card[aria-pressed=true] .pick-copy b::before{content:'✓ ';color:#61773b}
+.setup-or{text-align:center;font-size:12px;color:#7f8576;margin:20px 0}.setup-step .field-heading{margin-bottom:9px}.setup-step .input-wrap{width:100%}.setup-step input[type=text]{min-width:0;width:100%}
+.setup-step .continuation-toggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:18px}.continuation-toggle input,.continuation-bar input{width:18px;height:18px;accent-color:#72854e}.continuation-toggle small{color:#838878;font-size:10px}
+.setup-hint{font-size:12px;line-height:1.6;color:#7c8272;margin:7px 0 0}.setup-step #addNextVideo{margin-top:12px;min-height:44px}
+.queue-row{display:flex;gap:10px;align-items:end;margin-top:14px}.queue-row label{flex:1;font-size:12px}.queue-row input{display:block;margin-top:7px;border:1px solid #dde0d5;border-radius:12px;padding:14px;background:white;box-sizing:border-box}.queue-row button{min-width:44px;height:46px}
+body[data-view=setup] .start{width:100%;min-height:54px}.setup #setupStatus{margin:0;font-size:12px;color:#777d6d}.setup #setupStatus:empty{display:none}.setup-foot{margin-top:16px}
+.continuation-bar{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:10px 4px;font-size:11px;color:#747b68;flex-wrap:wrap}.continuation-bar label{display:flex;align-items:center;gap:7px}.expanded .continuation-bar{display:none}
+body[data-view=workout] main{padding-top:22px}
+@media(max-width:600px){.setup-intro{padding:24px 0 20px}body[data-view=setup] .setup{padding:16px}body[data-view=setup] #setupForm{gap:24px}.setup-step h2{font-size:22px}.setup-step .workout-picks{grid-template-columns:1fr;display:grid;gap:9px}.setup-step .pick-card{flex-direction:row;align-items:center;padding:9px;gap:12px}.setup-step .pick-card img{width:100px;aspect-ratio:16/10}.setup-step .pick-copy b{font-size:12px}.setup-step .pick-copy small{font-size:10px}.setup-step .pick-copy>span{font-size:9px}.setup-intro h1{font-size:38px}.view-controls{flex-wrap:wrap}.continuation-bar{font-size:10px}}
