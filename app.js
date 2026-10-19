@@ -41,32 +41,25 @@ const commandHistory = {workout:[], entertainment:[]};
 let commandSequence = 0, mobileAudioMode = false, expanded = false, restoreFocus, savedScroll = 0;
 let audioBeforeMode = null;
 let playing = false, initialized = false, apiPromise, filter = 'all', dialogMode = 'save', replaceCategory = 'entertainment';
-let entertainmentDucked = false, entertainmentAudioRevision = 0;
-const intervalTimer = new window.MoveMixTimer({
+let entertainmentAudioRevision = 0;
+const entertainmentDucks = new window.MoveMixAudioDucker({
+  player:()=>ready.entertainment?entertainmentPlayer:null,
+  revision:()=>entertainmentAudioRevision,
+  command:(method,args,reason)=>command('entertainment',method,args,reason),
+  applyPreferences:()=>applySound('entertainment')
+});
+let quickTimer;
+const intervalTimer = new window.MoveMixAutomaticCues({
+  workouts:window.BUILT_IN_WORKOUTS,
   sample:()=> {
     if(!ready.workout)return null;
     return {time:workoutPlayer.getCurrentTime(),state:workoutPlayer.getPlayerState(),videoId:videoId(workoutPlayer.getVideoUrl()),rate:workoutPlayer.getPlaybackRate()};
   },
-  beginDuck:()=> {
-    if(!ready.entertainment)return ()=>{};
-    const player=entertainmentPlayer, revision=entertainmentAudioRevision;
-    const volume=player.getVolume(), wasMuted=player.isMuted();
-    entertainmentDucked=true;
-    command('entertainment','mute',[],'Timer cue duck');
-    let released=false;
-    return ()=> {
-      if(released)return;released=true;entertainmentDucked=false;
-      if(!ready.entertainment || entertainmentPlayer!==player)return;
-      // Preserve actual native-player sound settings, unless an app control changed
-      // during this cue. Never write a temporary duck to localStorage.
-      if(revision===entertainmentAudioRevision){
-        command('entertainment','setVolume',[volume],'Timer cue restore');
-        command('entertainment',wasMuted?'mute':'unMute',[],'Timer cue restore');
-      }else applySound('entertainment');
-    };
-  },
+  beginDuck:()=>entertainmentDucks.acquire('automatic'),
+  suppressAudio:()=>quickTimer?.clock.running===true,
   log:diagnostic
 });
+quickTimer = new window.MoveMixQuickTimer({beginDuck:()=>entertainmentDucks.acquire('quick'),onStart:()=>intervalTimer.audio.stop()});
 function diagnostic(type, detail) {
   if (debug) console.info('[MOVE/MIX]', type, {at: new Date().toISOString(), ...detail});
 }
@@ -108,6 +101,7 @@ function setExpanded(enabled) {
   diagnostic('expanded-view', {enabled});
 }
 document.addEventListener('keydown', event => {
+  if(event.key==='Escape'&&!$('quickCustomPanel').hidden){$('quickCustomPanel').hidden=true;event.preventDefault();return;}
   if (event.key === 'Escape' && expanded && !$('editor').open) setExpanded(false);
 });
 function handlePlayerState(c, value) {
@@ -143,7 +137,7 @@ function youtubeAPI() {
   });
   return apiPromise;
 }
-function applySound(c) { if (ready[c]) { invoke(c, 'setVolume', state[c+'Volume']); invoke(c, muted[c] || (c==='entertainment' && entertainmentDucked) ? 'mute' : 'unMute'); } }
+function applySound(c) { if (ready[c]) { invoke(c, 'setVolume', state[c+'Volume']); invoke(c, muted[c] || (c==='entertainment' && entertainmentDucks.active) ? 'mute' : 'unMute'); } }
 function command(c, method, args = [], reason = 'app control') {
   if (!ready[c]) { diagnostic('command-skipped', {player:c, method, reason:'player not ready'}); return; }
   const expected = {playVideo:1,pauseVideo:2,loadVideoById:1,cueVideoById:5}[method];
@@ -156,7 +150,7 @@ function command(c, method, args = [], reason = 'app control') {
 function invoke(c, method, ...args) { command(c, method, args); }
 function loadVideo(c, id) {
   if(c==='workout')intervalTimer.bindWorkout(id);
-  else intervalTimer.audio.stop();
+  else {intervalTimer.audio.stop();entertainmentAudioRevision++;}
   pending[c] = id;
   $(c+'PlayerError').hidden = true;
   if (ready[c]) {
@@ -263,6 +257,26 @@ function renderFavorites() {
     card.append(load,del);list.append(card);
   });
 }
+function renderPicks(){
+  const list=$('workoutPicks');list.replaceChildren();
+  (window.BUILT_IN_WORKOUTS||[]).forEach(pick=>{
+    const button=document.createElement('button');button.className='pick-card';
+    const image=document.createElement('img');image.src=pick.thumbnail||`https://i.ytimg.com/vi/${pick.videoId}/hqdefault.jpg`;image.alt='';image.loading='lazy';
+    const copy=document.createElement('span');copy.className='pick-copy';
+    const title=document.createElement('b');title.textContent=pick.title;
+    const creator=document.createElement('small');creator.textContent=pick.creator;
+    const tags=document.createElement('span');tags.textContent=[pick.duration?`${Math.round(pick.duration/60)} min`:null,pick.category].filter(Boolean).join(' · ');
+    if(pick.timerPreset&&!window.MoveMixAutomaticCues.validate({offset:0,...pick.timerPreset})){const badge=document.createElement('em');badge.textContent='Automatic cues';copy.append(badge);}
+    copy.append(title,creator,tags);button.append(image,copy);button.setAttribute('aria-label',`Load ${pick.title} by ${pick.creator}`);
+    button.onclick=()=>{replace('workout',`https://www.youtube.com/watch?v=${pick.videoId}`);status(`${pick.title} added as your workout. ${initialized?'Your entertainment keeps its place.':'Add entertainment and press Start session.'}`);};
+    list.append(button);
+  });
+}
+$('workoutFavoritesLink').onclick=()=>{
+  const button=document.querySelector('[data-filter="workout"]');if(button)button.click();
+  $('favorites').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('workoutPasteLink').onclick=()=>{$('workoutUrl').focus();$('workoutUrl').scrollIntoView({behavior:'smooth',block:'center'});};
 categories.forEach(c=> {
   $(c+'Url').value=state[c+'Url']; $(c+'Volume').value=state[c+'Volume']; $(c+'VolumeValue').textContent=state[c+'Volume']+'%';
   $(c+'Volume').addEventListener('input',e=>{if(c==='entertainment')entertainmentAudioRevision++;state[c+'Volume']=Number(e.target.value);$(c+'VolumeValue').textContent=e.target.value+'%';applySound(c);persist();});
@@ -330,7 +344,7 @@ $('surprise').onclick=()=> {
 };
 function demo(){ $('workoutUrl').value='https://www.youtube.com/watch?v=UBMk30rjy0o';$('entertainmentUrl').value='https://www.youtube.com/watch?v=dQw4w9WgXcQ';startSession(); }
 $('demo').onclick=demo;$('emptyDemo').onclick=demo;
-updateLayout();renderFavorites();
+updateLayout();renderFavorites();renderPicks();
 intervalTimer.bindWorkout(videoId(state.workoutUrl));
 $('mobilePlaybackHelp').hidden = !isIOS;
 if (isIOS) $('platformNote').textContent = 'On iPhone/iPad, load your videos, then tap Play both. If starting one pauses the other, try muted workout mode. Use your device volume buttons if a slider has no effect.';

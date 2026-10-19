@@ -1,10 +1,10 @@
 /* Buildless interval timer. The timeline/tracker are also exported for Node tests. */
 (function(root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.MoveMixTimer = factory();
+  else root.MoveMixAutomaticCues = factory();
 })(typeof window === 'undefined' ? this : window, function() {
   'use strict';
-  const KEY = 'move-mix-workout-timers-v1';
+  const KEY = 'move-mix-automatic-cues-v1';
   const clone = value => JSON.parse(JSON.stringify(value));
   const blank = () => ({enabled:false, offset:0, countdown:false, segments:[]});
   function parseTime(value) {
@@ -61,6 +61,7 @@
       else {
         if (phase.key !== prev.phase.key) {
           if (phase.phase === 'WORK' || phase.phase === 'REST') cue = phase.phase;
+          else if(phase.phase === 'GET READY' && (prev.phase.phase === 'WORK' || prev.phase.phase === 'REST'))cue='REST';
           else if(phase.phase === 'DONE' && (prev.phase.phase === 'WORK' || prev.phase.phase === 'REST'))cue='DONE';
           this.warningKey = null;
         } else if (preset.countdown && phase.phase === 'WORK' && phase.remaining <= 3 && prev.phase.remaining > 3 && this.warningKey !== phase.key) {
@@ -81,7 +82,7 @@
           this.context = new Audio();
           this.context.onstatechange = () => {
             if (this.context.state !== 'running') {
-              this.stop(); this.notice('Cue audio is paused by the browser. Tap Play Both or Test cue to re-enable sound.');
+              this.stop(); this.notice('Cue audio is paused by the browser. Tap Play Both to re-enable sound.');
             }
           };
         }
@@ -90,12 +91,12 @@
           const ok = this.context.state === 'running';
           if (ok) this.notice('Cue sound ready. Keep this page visible during your workout.');
           return ok;
-        }).catch(() => { this.notice('Sound could not start. Tap Test cue or Play Both to try again; the visual timer still works.'); return false; });
+        }).catch(() => { this.notice('Sound could not start. Tap Play Both to try again; the visual timer still works.'); return false; });
       } catch { this.notice('Sound is unavailable. The visual timer still works.'); return Promise.resolve(false); }
     }
     play(kind) {
       if (!this.context || this.context.state !== 'running' || document.hidden) {
-        this.notice('Timer is tracking visually. Tap Play Both or Test cue to enable sound.'); return false;
+        this.notice('Timer is tracking visually. Tap Play Both to enable sound.'); return false;
       }
       this.stop();
       const ctx=this.context, lead=0.06, starts=kind === 'REST' || kind === 'DONE' ? [0,0.14] : [0];
@@ -117,7 +118,7 @@
         this.cleanupTimer=setTimeout(()=>this.stop(),length*1000);
         this.adapter.log?.('timer-cue',{kind});
         return true;
-      } catch { this.stop(); this.notice('Cue sound failed. The visual timer continues; tap Test cue to retry.'); return false; }
+      } catch { this.stop(); this.notice('Cue sound failed. The visual timer continues; tap Play Both to retry.'); return false; }
     }
     stop() {
       this.generation++;
@@ -126,107 +127,62 @@
       const release=this.release;this.release=null;if(release)release();
     }
   }
-  class MoveMixTimer {
+  class AutomaticCues {
     constructor(adapter) {
-      this.adapter=adapter;this.id=null;this.preset=blank();this.store=Object.create(null);this.tracker=new Tracker();this.poll=null;this.announced='';
+      this.adapter=adapter;this.id=null;this.preset=blank();this.preferences=Object.create(null);this.tracker=new Tracker();this.poll=null;this.announced='';
       this.$=id=>document.getElementById(id);
       this.audio=new CueAudio(adapter,message=>this.notice(message));
-      try {
-        const saved=JSON.parse(localStorage.getItem(KEY));
-        if (saved && typeof saved === 'object') Object.entries(saved).forEach(([id,preset])=>{
-          if (/^[\w-]{11}$/.test(id) && !validate(preset)) this.store[id]={...clone(preset),enabled:preset.enabled===true,countdown:preset.countdown===true};
-        });
-      } catch {}
+      try{const saved=JSON.parse(localStorage.getItem(KEY));if(saved&&typeof saved==='object')Object.entries(saved).forEach(([id,on])=>{if(/^[\w-]{11}$/.test(id)&&typeof on==='boolean')this.preferences[id]=on;});}catch{}
       this.$('timerEnabled').onclick=()=>this.toggle();
-      this.$('timerAddSegment').onclick=()=>this.addSegment();
-      this.$('timerForm').onsubmit=event=>{event.preventDefault();this.saveDraft();};
-      this.$('timerTestCue').onclick=()=>{const generation=this.audio.generation;this.audio.unlock().then(ok=>{if(ok&&generation===this.audio.generation)this.audio.play('REST');});};
-      this.$('timerForm').addEventListener('input',()=>{this.$('timerError').textContent='';this.notice('Timing edits apply when you save this preset.');});
-      document.addEventListener('visibilitychange',()=>{this.resync();if(document.hidden)this.audio.stop();});
+      document.addEventListener('visibilitychange',()=>this.resync());
       window.addEventListener('pagehide',()=>this.audio.stop());
       this.bindWorkout(null);
     }
-    notice(message) { this.$('timerNotice').textContent=message; }
-    persist() {
-      if (!this.id) return false;
-      this.store[this.id]=clone(this.preset);
-      try {localStorage.setItem(KEY,JSON.stringify(this.store));return true;}
-      catch {this.notice('Timer works for this session, but browser storage could not save this preset.');return false;}
-    }
-    bindWorkout(id) {
-      if (id && id === this.id) {this.resync();return;}
-      this.audio.stop();this.stopPolling();this.id=id;this.preset=id && this.store[id] ? clone(this.store[id]) : blank();this.tracker.reset();
-      this.$('timerWorkoutName').textContent=id ? `Workout · ${id}` : 'Load a workout video to configure its timer.';
-      this.$('timerEnabled').disabled=!id;this.$('timerSave').disabled=!id;this.$('timerError').textContent='';
-      this.$('timerOffset').value=formatTime(this.preset.offset);this.$('timerCountdown').checked=this.preset.countdown;
-      this.$('timerSegments').replaceChildren();
-      (this.preset.segments.length ? this.preset.segments : [{start:0,end:600,work:45,rest:15}]).forEach(s=>this.addRow(s));
-      this.notice(this.preset.enabled ? 'Saved timer loaded. Tap Play Both or Test cue to enable sound.' : 'Cues are off. Save timing for this workout, then enable when ready.');
+    notice(message){this.$('timerNotice').textContent=message;this.$('timerNotice').hidden=!message;}
+    bindWorkout(id){
+      if(id&&id===this.id){this.resync();return;}
+      this.audio.stop();this.stopPolling();this.id=id;this.tracker.reset();
+      const pick=(this.adapter.workouts||[]).find(pick=>pick.videoId===id&&pick.timerPreset);
+      const source=pick?{offset:0,countdown:false,...clone(pick.timerPreset)}:null;
+      this.available=!!source&&!validate(source);
+      this.preset=this.available?{...source,enabled:this.preferences[id]===true}:blank();
+      this.$('automaticControls').hidden=!this.available;
+      this.$('timerEnabled').disabled=!this.available;
+      this.notice(this.preset.enabled?'Automatic Cues restored. Tap Play Both to enable cue sound.':'');
       this.updateEnabled();
     }
-    addRow(segment) {
-      const list=this.$('timerSegments'), row=document.createElement('fieldset');row.className='timer-segment';
-      const legend=document.createElement('legend');legend.textContent=`Segment ${list.children.length+1}`;row.append(legend);
-      [['start','Start time',formatTime(segment.start),'text'],['end','End time',formatTime(segment.end),'text'],['work','Work seconds',segment.work,'number'],['rest','Rest seconds',segment.rest,'number']].forEach(([key,label,value,type])=>{
-        const wrap=document.createElement('label');wrap.textContent=label;
-        const input=document.createElement('input');input.type=type;input.value=value;input.dataset.field=key;input.required=true;
-        input.inputMode=type==='number'?'numeric':'text';
-        if(type==='number'){input.min=key==='work'?'1':'0';input.max='3600';input.step='1';}else input.placeholder='0:00';
-        wrap.append(input);row.append(wrap);
-      });
-      const del=document.createElement('button');del.type='button';del.className='timer-delete';del.textContent='Delete segment';
-      del.onclick=()=>{row.remove();Array.from(list.children).forEach((el,i)=>el.querySelector('legend').textContent=`Segment ${i+1}`);this.notice('Segment removed from the draft. Save to apply.');};
-      row.append(del);list.append(row);
-    }
-    readDraft() {
-      return {enabled:this.preset.enabled,offset:parseTime(this.$('timerOffset').value),countdown:this.$('timerCountdown').checked,
-        segments:Array.from(this.$('timerSegments').children).map(row=>Object.fromEntries(['start','end','work','rest'].map(key=>{
-          const value=row.querySelector(`[data-field="${key}"]`).value;
-          return [key,key==='start'||key==='end'?parseTime(value):value.trim()===''?NaN:Number(value)];
-        })))};
-    }
-    addSegment() {
-      if (this.$('timerSegments').children.length>=30){this.$('timerError').textContent='Use at most 30 segments.';return;}
-      const draft=this.readDraft(), last=draft.segments.at(-1), start=Number.isFinite(last?.end)?last.end:0;
-      this.addRow({start,end:start+600,work:30,rest:10});this.notice('Segment added to the draft. Save to apply.');
-    }
-    saveDraft(enable) {
-      if (!this.id){this.$('timerError').textContent='Load a workout video first.';return false;}
-      const draft=this.readDraft(),error=validate(draft);
-      if(error){this.$('timerError').textContent=error;this.$('timerSetup').open=true;return false;}
-      this.audio.stop();this.preset={...draft,enabled:enable===undefined?this.preset.enabled:enable};this.tracker.reset();const saved=this.persist();this.updateEnabled();
+    toggle(){
+      if(!this.available)return;
+      this.preset.enabled=!this.preset.enabled;this.preferences[this.id]=this.preset.enabled;
+      this.resync();this.updateEnabled();
+      try{localStorage.setItem(KEY,JSON.stringify(this.preferences));this.notice('');}catch{this.notice('Automatic Cues changed for this session; storage is unavailable.');}
       if(this.preset.enabled)this.unlockFromGesture();
-      this.notice(saved ? 'Preset saved for this workout. Segment times are relative to the intro offset.' : 'Timing applied for this session only. Browser storage could not save this preset.');return true;
     }
-    toggle() {
-      if (this.preset.enabled) {
-        this.preset.enabled=false;this.audio.stop();const saved=this.persist();this.updateEnabled();this.notice(saved ? 'Timer cues off. Your video controls are unchanged.' : 'Timer cues off for this session. Browser storage could not save that preference.');
-      } else if(this.saveDraft(true))this.$('timerSetup').open=false;
-    }
-    updateEnabled() {
+    updateEnabled(){
       const on=this.preset.enabled;
-      this.$('timerEnabled').textContent=`Timer Cues: ${on?'ON':'OFF'}`;this.$('timerEnabled').setAttribute('aria-pressed',String(on));
-      this.$('timerOverlay').hidden=!on;this.$('timerPanel').classList.toggle('timer-on',on);
-      this.stopPolling();
+      this.$('timerEnabled').textContent=`Automatic Cues: ${on?'ON':'OFF'}`;
+      this.$('timerEnabled').setAttribute('aria-pressed',String(on));
+      this.$('timerOverlay').hidden=!on;this.stopPolling();
       if(on){this.tick();this.poll=setInterval(()=>this.tick(),250);}
     }
     stopPolling(){if(this.poll!==null)clearInterval(this.poll);this.poll=null;}
     resync(){this.tracker.reset();this.audio.stop();}
     unlockFromGesture(){if(this.preset.enabled)return this.audio.unlock();return Promise.resolve(false);}
-    tick() {
+    tick(){
       if(!this.preset.enabled)return;
       if(document.hidden){this.resync();return;}
-      let sample;
-      try{sample=this.adapter.sample();}catch{sample=null;}
-      if(!sample || sample.videoId!==this.id || !Number.isFinite(sample.time)) {
-        this.tracker.reset();this.render({phase:'READY',remaining:null,next:'Load workout',key:'loading'});return;
+      let sample;try{sample=this.adapter.sample();}catch{sample=null;}
+      if(!sample||sample.videoId!==this.id||!Number.isFinite(sample.time)){
+        this.tracker.reset();this.render({phase:'READY',remaining:null,next:'Load workout'});return;
       }
-      if(sample.state!==1 && this.tracker.previous?.state===1)this.audio.stop();
+      if(sample.state!==1&&this.tracker.previous?.state===1)this.audio.stop();
       const phase=this.tracker.update(sample,this.preset,performance.now());
       this.render({...phase,paused:sample.state!==1});
-      if(phase.cue)this.audio.play(phase.cue);
+      // Quick Timer has no generated sound. Skip automatic tones during that
+      // manually selected exercise, while keeping the automatic timeline aligned.
+      if(phase.cue&&!this.adapter.suppressAudio?.())this.audio.play(phase.cue);
     }
-    render(phase) {
+    render(phase){
       this.$('timerPhase').textContent=phase.phase;
       this.$('timerRemaining').textContent=phase.remaining===null?'—':formatTime(phase.remaining);
       this.$('timerNext').textContent=phase.paused?`Paused · Next: ${phase.next}`:`Next: ${phase.next}`;
@@ -235,6 +191,6 @@
       if(announcement!==this.announced){this.$('timerAnnouncement').textContent=announcement;this.announced=announcement;}
     }
   }
-  Object.assign(MoveMixTimer,{KEY,parseTime,formatTime,validate,phaseAt,Tracker,CueAudio});
-  return MoveMixTimer;
+  Object.assign(AutomaticCues,{KEY,parseTime,formatTime,validate,phaseAt,Tracker,CueAudio});
+  return AutomaticCues;
 });

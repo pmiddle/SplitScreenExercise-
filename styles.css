@@ -119,33 +119,6 @@ body.expanded .session{position:fixed;inset:0;z-index:50;display:flex;flex-direc
 
 /* Workout timer: independent of iframe layout and stored video controls. */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.timer-panel{padding:18px 22px;margin-top:15px;min-width:0}
-.timer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.timer-toolbar h2{font-size:13px;font-weight:600;margin:0 0 5px}
-.timer-toolbar h2 span{margin-left:8px;color:var(--violet)}
-.timer-toolbar small{font-size:10px;color:#8b8f7f}
-#timerEnabled{font-size:11px;min-height:44px;white-space:nowrap;background:#f7f8f2}
-#timerEnabled[aria-pressed=true]{background:var(--lime);border-color:#bedb7c}
-#timerSetup{margin-top:12px;border-top:1px solid var(--line)}
-#timerSetup summary{min-height:44px;padding:14px 0 8px;font-size:12px;cursor:pointer;font-weight:600}
-#timerSetup summary span{font-size:10px;color:#919586;font-weight:400;margin-left:10px}
-.timer-intro-fields{display:flex;gap:24px;align-items:center;margin-top:14px}
-.timer-intro-fields>label{font-size:11px}
-.timer-intro-fields input[type=text],#timerOffset{display:block;margin-top:7px;width:150px}
-.timer-panel input:not([type=checkbox]){background:#fafbf7;border:1px solid var(--line);border-radius:8px;min-height:44px;padding:10px 12px;font-size:14px;color:var(--ink)}
-.timer-checkbox{display:grid;grid-template-columns:24px 1fr;align-items:center;gap:4px 8px;min-height:44px;cursor:pointer}
-.timer-checkbox input{width:22px;height:22px;accent-color:var(--violet);grid-row:span 2;margin:0}
-.timer-checkbox small{grid-column:2;font-size:10px;color:#8b8f7f}
-.timer-help,.timer-notice{font-size:10px;line-height:1.6;color:#8b8f7f}
-.timer-notice{margin:10px 0 0}
-.timer-segments{display:grid;gap:14px;margin:16px 0}
-.timer-segment{margin:0;padding:14px;border:1px solid var(--line);border-radius:12px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px;align-items:end;background:#fbfcf8}
-.timer-segment legend{padding:0 7px;color:#81709e;font-size:10px;font-weight:700;letter-spacing:.5px}
-.timer-segment label{font-size:10px;color:#74796a}
-.timer-segment input{width:100%;margin-top:7px}
-.timer-panel button{min-height:44px;font-size:11px}
-.timer-delete{color:#9b6666;background:#fff}
-.timer-save-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .stage{--pip-width:clamp(356px,33%,440px);--pip-inset:18px}
 .timer-overlay{position:absolute;z-index:4;bottom:var(--pip-inset);left:var(--pip-inset);display:flex;flex-direction:column;gap:3px;min-width:106px;max-width:160px;background:#f8f8f2f5;color:var(--ink);border:1px solid #ffffffaa;border-radius:10px;padding:9px 12px;box-shadow:0 3px 14px #0002;pointer-events:none;font-variant-numeric:tabular-nums}
 .timer-overlay>span{font-size:10px;font-weight:800;letter-spacing:1px;color:#6c8550}
@@ -154,25 +127,95 @@ body.expanded .session{position:fixed;inset:0;z-index:50;display:flex;flex-direc
 .timer-overlay[data-phase=REST]{background:#f0e9fff5}
 .timer-overlay[data-phase=REST]>span{color:var(--violet)}
 .timer-overlay[data-phase="GET READY"]>span,.timer-overlay[data-phase=DONE]>span{color:#8c7b5e}
-.stage[data-main=entertainment] .timer-overlay{left:auto;right:calc(var(--pip-width) + var(--pip-inset) + 10px)}
-.stage[data-main=entertainment][data-position=top-left] .timer-overlay{left:calc(var(--pip-width) + var(--pip-inset) + 10px);right:auto;top:var(--pip-inset);bottom:auto}
+.stage[data-main=entertainment] .timer-overlay{left:auto;right:calc(var(--pip-effective,var(--pip-width)) + var(--pip-inset) + 10px)}
+.stage[data-main=entertainment][data-position=top-left] .timer-overlay{left:calc(var(--pip-effective,var(--pip-width)) + var(--pip-inset) + 10px);right:auto;top:var(--pip-inset);bottom:auto}
 .stage[data-main=entertainment][data-position=top-right] .timer-overlay{top:var(--pip-inset);bottom:auto}
-.stage[data-main=entertainment][data-position=bottom-left] .timer-overlay{left:calc(var(--pip-width) + var(--pip-inset) + 10px);right:auto}
-.expanded .timer-panel{position:absolute;top:max(12px,env(safe-area-inset-top,0px));left:max(14px,env(safe-area-inset-left,0px));z-index:5;padding:0;margin:0;background:transparent;border:0}
-.expanded .timer-toolbar>div,.expanded #timerSetup,.expanded .timer-notice{display:none}
-.expanded #timerEnabled{background:#f8f8f2ed;font-size:10px;min-height:44px;padding:8px 11px;box-shadow:0 2px 12px #0002}
-.expanded #timerEnabled[aria-pressed=true]{background:var(--lime)}
-@media(max-width:900px),(pointer:coarse){.timer-panel input:not([type=checkbox]){font-size:16px}.timer-segment{grid-template-columns:repeat(4,minmax(0,1fr))}.timer-delete{grid-column:1/-1;justify-self:end}.timer-segment label{font-size:11px}}
+.stage[data-main=entertainment][data-position=bottom-left] .timer-overlay{left:calc(var(--pip-effective,var(--pip-width)) + var(--pip-inset) + 10px);right:auto}
 @media(max-width:600px){
-  .timer-panel{padding:16px}.timer-toolbar h2{font-size:12px}.timer-toolbar small{font-size:9px}
-  .timer-intro-fields{align-items:flex-start;flex-direction:column;gap:16px}
-  .timer-segment{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px}
-  #timerSetup summary span{display:none}
-  .timer-panel button{font-size:11px}.timer-save-actions button{flex:1}
   .stage{--pip-width:42%;--pip-inset:8px}
   .timer-overlay{min-width:84px;max-width:100px;padding:6px 8px;gap:2px;border-radius:8px}
   .timer-overlay>span{font-size:8px;letter-spacing:.5px}.timer-overlay>strong{font-size:22px}.timer-overlay>small{font-size:8px}
-  .expanded #timerEnabled{font-size:9px;padding:6px 8px}
 }
 @media(orientation:landscape) and (max-height:600px) and (max-width:1200px){.stage{--pip-width:38%}}
+
+
+/* Curated picks are separate from local Favorites. */
+.workout-sources{margin-top:28px}
+.picks-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.picks-heading h2{font-family:Manrope,sans-serif;letter-spacing:-.7px;font-size:22px;margin:6px 0 0}
+.workout-source-links{display:flex;gap:8px}
+.workout-source-links button{font-size:10px;min-height:44px}
+.workout-picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pick-card{display:flex;align-items:center;gap:12px;min-width:0;text-align:left;padding:10px;background:#fff;border-radius:12px}
+.pick-card img{width:104px;aspect-ratio:16/10;object-fit:cover;border-radius:8px;flex:none}
+.pick-copy{min-width:0;display:flex;flex-direction:column;gap:5px}
+.pick-copy b{font-size:12px;line-height:1.4}.pick-copy small{font-size:10px;color:#888e7c;font-weight:400}
+.pick-copy>span{font-size:8px;color:#9b9f91;font-weight:400;line-height:1.5}
+.pick-copy em{font-size:8px;color:var(--violet);font-style:normal}
+.expanded main>.workout-sources{display:none}
+/* A one-tap dock immediately beside the video workspace, never in Settings. */
+.timer-dock{display:flex;align-items:center;flex-wrap:wrap;gap:8px;position:relative;z-index:6;padding:8px 10px;background:#f0f2e8;border:1px solid var(--line);border-radius:12px;margin:8px 0}
+.quick-title{font-size:11px;font-weight:600;margin-right:4px}
+.quick-choices,.quick-running{display:flex;align-items:center;gap:5px}
+.timer-dock button{height:44px;min-width:44px;padding:8px 10px;background:#fff;font-size:12px;touch-action:manipulation}
+.quick-choices button:hover{background:var(--lime)}
+.quick-running strong{font-size:25px;letter-spacing:-.7px;min-width:38px;font-variant-numeric:tabular-nums}
+.quick-running>span{font-size:10px;color:#8b917d;margin-right:10px}
+#quickCancel{font-size:22px;padding:6px}
+.automatic-controls{margin-left:auto}
+#timerEnabled{height:44px;font-size:10px;white-space:nowrap}
+#timerEnabled[aria-pressed=true]{background:var(--lime);border-color:#bfd782}
+.timer-notice{margin:0;padding:3px;font-size:10px;line-height:1.4;color:#8b8068}
+.quick-custom-panel{position:absolute;z-index:12;top:calc(100% + 6px);left:0;width:min(330px,100%);padding:14px;box-shadow:0 8px 30px #0002}
+.quick-custom-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.quick-custom-input{display:flex;gap:8px;margin-top:8px}
+.quick-custom-input input{min-width:0;width:100%;height:44px;border:1px solid var(--line);border-radius:8px;background:#fafbf7;padding:10px;font-size:16px}
+.quick-custom-input button{min-width:110px}
+.quick-timer-overlay{pointer-events:auto;min-width:130px;max-width:160px}
+.quick-overlay-row{display:flex;align-items:center;justify-content:space-between;gap:5px}
+.quick-overlay-row strong{font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-1px}
+.quick-overlay-row button{width:44px;height:44px;min-width:44px;padding:4px;font-size:24px;border-color:transparent;color:#858c77}
+.quick-timer-overlay[data-silent=true]{background:#eee8faf5;border-color:#bcb0d6}
+.quick-timer-running #timerOverlay{visibility:hidden}
+.expanded .timer-dock{flex:none;margin:0;padding:4px 8px}
+.expanded .timer-notice{flex:none}
+.expanded .quick-custom-panel{top:auto;bottom:calc(100% + 6px)}
+@supports(container-type:size){
+  .expanded .stage{container-type:size;--pip-effective:min(var(--pip-width),calc((100cqh - var(--pip-inset) - var(--pip-inset))*1.77777778))}
+  .expanded .stage .video-shell.small{width:var(--pip-effective);min-height:0;height:auto}
+}
+@media(max-width:1050px){.pick-card{flex-direction:column;align-items:stretch}.pick-card img{width:100%;aspect-ratio:16/8}.pick-copy b{font-size:11px}}
+@media(max-width:600px){
+  .picks-heading{flex-wrap:wrap}.workout-source-links{gap:6px}.workout-source-links button{font-size:10px;padding:8px 10px}
+  .workout-picks{gap:8px}.pick-card{padding:7px;gap:8px}.pick-copy b{font-size:10px}.pick-copy small{font-size:9px}.pick-copy>span{font-size:7px}
+  .timer-dock{gap:5px;padding:5px 7px}.quick-title{font-size:10px;margin-right:1px}.quick-choices{gap:4px}
+  .timer-dock button{padding:6px 8px}.automatic-controls{margin-left:auto}
+  .quick-timer-overlay{min-width:125px;max-width:140px}.quick-overlay-row strong{font-size:26px}
+}
+@media(orientation:landscape) and (max-height:600px){.expanded .timer-dock{min-height:50px}.expanded .timer-notice{font-size:9px}}
+@media(max-width:600px){.quick-running>span{display:none}.quick-running strong{min-width:30px}.timer-dock #timerEnabled{width:86px;white-space:normal;font-size:9px;line-height:1.2;padding:5px}}
+
+/* Share the timer/transport row on wider phones in expanded landscape, keeping
+   the new one-tap controls from taking another full row of video height. */
+@media(orientation:landscape) and (min-width:760px) and (max-height:600px){
+  body.expanded .session{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);grid-template-rows:minmax(100px,1fr) auto auto auto auto;align-items:stretch}
+  .expanded .stage{grid-area:1/1/2/3;min-height:100px;height:100%}
+  .expanded .timer-dock{grid-area:2/1/3/2;min-width:0;gap:5px;padding:4px 6px;justify-content:flex-start}
+  .expanded .quick-title{font-size:10px;margin-right:0}
+  .expanded .quick-choices{gap:4px}
+  .expanded .timer-dock button{padding:6px;min-width:44px}
+  .expanded .timer-dock #timerEnabled{width:86px;white-space:normal;font-size:9px;line-height:1.2;padding:5px}
+  .expanded .quick-running>span{display:none}.expanded .quick-running strong{min-width:30px;font-size:22px}
+  .expanded .playback{grid-area:2/2/3/3;min-width:0;flex-wrap:nowrap;gap:4px;padding:4px 6px}
+  .expanded .transport{flex:none;width:auto;gap:1px}
+  .expanded .transport button{min-width:44px;padding:5px}
+  .expanded .transport button:not(#playBoth) span{display:none}
+  .expanded #playBoth span{font-size:9px}
+  .expanded .position-label{font-size:8px;gap:4px;min-width:0}
+  .expanded .position-label select{font-size:10px;width:110px;min-width:0;padding:5px}
+  .expanded .timer-notice{grid-area:3/1/4/3}
+  .expanded .status{grid-area:4/1/5/2;align-self:center}
+  .expanded .mobile-help{grid-area:4/2/5/3;align-self:center}
+  .expanded .mixer-grid{grid-area:5/1/6/3}
+}
 
